@@ -1,0 +1,6 @@
+{
+  "name": "CareerForge AI",
+  "description": "An AI-powered professional CV, resume, and cover letter builder. Generate ATS-friendly content, optimize resumes, track jobs, and prepare for interviews with an AI Copilot.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
