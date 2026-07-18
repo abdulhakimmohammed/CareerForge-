@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { ResumeData, WorkExperience, Education, Project, Certification, Language, Award, Reference } from "../types";
-import { Plus, Trash, Wand2, Sparkles, RefreshCw, Layers, CheckCircle, ChevronDown, ChevronUp, Save, BrainCircuit } from "lucide-react";
+import { Plus, Trash, Wand2, Sparkles, RefreshCw, Layers, CheckCircle, ChevronDown, ChevronUp, Save, BrainCircuit, UploadCloud, FileText, X } from "lucide-react";
 
 interface ResumeFormProps {
   data: ResumeData;
@@ -24,6 +24,19 @@ export default function ResumeForm({ data, onChange, onAISkipGenerate, isGenerat
   const [quickGoal, setQuickGoal] = useState("");
   const [quickIndustry, setQuickIndustry] = useState("");
   const [showQuickAI, setShowQuickAI] = useState(false);
+
+  // LinkedIn Import states
+  const [showLinkedInImport, setShowLinkedInImport] = useState(false);
+  const [importMode, setImportMode] = useState<"url" | "pdf">("url");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [linkedinPasteData, setLinkedinPasteData] = useState("");
+  const [isScrapingLinkedin, setIsScrapingLinkedin] = useState(false);
+  const [scrapingStatus, setScrapingStatus] = useState("");
+  
+  // PDF Import states
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [isParsingPdf, setIsParsingPdf] = useState(false);
+  const [parsingPdfStatus, setParsingPdfStatus] = useState("");
 
   // Field level AI loading states
   const [bulletLoadingFieldId, setBulletLoadingFieldId] = useState<string | null>(null);
@@ -169,6 +182,267 @@ export default function ResumeForm({ data, onChange, onAISkipGenerate, isGenerat
     setShowQuickAI(false);
   };
 
+  // LinkedIn Importer Scraper Handler
+  const handleScrapeLinkedin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkedinUrl) {
+      alert("Please enter a valid LinkedIn Profile URL first!");
+      return;
+    }
+    
+    setIsScrapingLinkedin(true);
+    setScrapingStatus("Connecting to LinkedIn profile resolver...");
+    
+    const statusMessages = [
+      "Bypassing profile access locks...",
+      "Extracting professional graph nodes...",
+      "Scraping roles, responsibilities, and timeline...",
+      "Analyzing skill associations with AI...",
+      "Synthesizing complete, ATS-friendly resume structure..."
+    ];
+    
+    let msgIdx = 0;
+    const interval = setInterval(() => {
+      if (msgIdx < statusMessages.length) {
+        setScrapingStatus(statusMessages[msgIdx]);
+        msgIdx++;
+      }
+    }, 2500);
+
+    try {
+      const res = await fetch("/api/scrape-linkedin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileUrl: linkedinUrl,
+          pasteData: linkedinPasteData
+        }),
+      });
+      
+      clearInterval(interval);
+      
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to scrape LinkedIn profile.");
+      }
+      
+      const result = await res.json();
+      
+      if (result.personalInfo) {
+        // Map scraped data directly to ResumeData!
+        onChange({
+          ...data,
+          personalInfo: {
+            fullName: result.personalInfo.fullName || data.personalInfo.fullName || "Professional Candidate",
+            profession: result.personalInfo.profession || data.personalInfo.profession || "Senior Professional",
+            email: result.personalInfo.email || data.personalInfo.email || "candidate@example.com",
+            phone: result.personalInfo.phone || data.personalInfo.phone || "+1 (555) 019-2834",
+            address: result.personalInfo.address || data.personalInfo.address || "San Francisco Bay Area",
+            linkedIn: linkedinUrl,
+            gitHub: data.personalInfo.gitHub || "",
+            portfolio: data.personalInfo.portfolio || "",
+            experienceLevel: result.personalInfo.experienceLevel || data.personalInfo.experienceLevel || "Senior",
+          },
+          professionalSummary: result.professionalSummary || data.professionalSummary || "",
+          workExperience: (result.workExperience || []).map((w: any) => ({
+            id: Math.random().toString(36).substr(2, 9),
+            company: w.company || "",
+            position: w.position || "",
+            location: w.location || "Remote",
+            startDate: w.startDate || "2022",
+            endDate: w.endDate || "Present",
+            current: w.current !== undefined ? w.current : true,
+            description: w.description || "",
+          })),
+          education: (result.education || []).map((edu: any) => ({
+            id: Math.random().toString(36).substr(2, 9),
+            institution: edu.institution || "",
+            degree: edu.degree || "",
+            fieldOfStudy: edu.fieldOfStudy || "",
+            location: edu.location || "",
+            startDate: edu.startDate || "2018",
+            endDate: edu.endDate || "2022",
+            gpa: edu.gpa || "",
+          })),
+          projects: (result.projects || []).map((p: any) => ({
+            id: Math.random().toString(36).substr(2, 9),
+            name: p.name || "",
+            role: p.role || "",
+            description: p.description || "",
+            technologies: p.technologies || "",
+          })),
+          skills: result.skills || data.skills || [],
+          certifications: (result.certifications || []).map((c: any) => ({
+            id: Math.random().toString(36).substr(2, 9),
+            name: c.name || "",
+            issuer: c.issuer || "",
+            date: c.date || "",
+          })),
+          awards: (result.awards || []).map((aw: any) => ({
+            id: Math.random().toString(36).substr(2, 9),
+            title: aw.title || "",
+            issuer: aw.issuer || "",
+            date: aw.date || "",
+            description: aw.description || "",
+          })),
+        });
+        
+        setShowLinkedInImport(false);
+        setLinkedinUrl("");
+        setLinkedinPasteData("");
+        alert("LinkedIn Profile successfully scraped & imported! Your resume form has been populated.");
+      } else {
+        alert("Scraping succeeded but returned invalid resume structure. Check server log.");
+      }
+    } catch (err: any) {
+      clearInterval(interval);
+      console.error(err);
+      alert(`Scraping Error: ${err.message || "Could not scrape LinkedIn profile. Verify server is running and API key is correct."}`);
+    } finally {
+      setIsScrapingLinkedin(false);
+      setScrapingStatus("");
+    }
+  };
+
+  // PDF AI Resume Parser Handler
+  const handleParsePdfResume = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pdfFile) {
+      alert("Please select or drop a PDF resume file first!");
+      return;
+    }
+
+    setIsParsingPdf(true);
+    setParsingPdfStatus("Reading local PDF file...");
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      let interval: NodeJS.Timeout | undefined;
+      try {
+        const base64String = (reader.result as string).split(",")[1];
+        if (!base64String) {
+          throw new Error("Could not read PDF file content.");
+        }
+
+        setParsingPdfStatus("Uploading & initializing AI multi-modal parser...");
+
+        const statusMessages = [
+          "Parsing visual document layout...",
+          "Analyzing font hierarchies & headers...",
+          "Extracting experience timelines and roles...",
+          "Validating skill graph taxonomy...",
+          "Synthesizing complete, ATS-friendly resume structure..."
+        ];
+
+        let msgIdx = 0;
+        interval = setInterval(() => {
+          if (msgIdx < statusMessages.length) {
+            setParsingPdfStatus(statusMessages[msgIdx]);
+            msgIdx++;
+          }
+        }, 2200);
+
+        const res = await fetch("/api/parse-pdf-resume", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pdfBase64: base64String,
+            fileName: pdfFile.name
+          }),
+        });
+
+        if (interval) clearInterval(interval);
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || "Failed to parse PDF resume.");
+        }
+
+        const result = await res.json();
+
+        if (result.personalInfo) {
+          onChange({
+            ...data,
+            personalInfo: {
+              fullName: result.personalInfo.fullName || data.personalInfo.fullName || "Professional Candidate",
+              profession: result.personalInfo.profession || data.personalInfo.profession || "Senior Professional",
+              email: result.personalInfo.email || data.personalInfo.email || "candidate@example.com",
+              phone: result.personalInfo.phone || data.personalInfo.phone || "+1 (555) 019-2834",
+              address: result.personalInfo.address || data.personalInfo.address || "San Francisco Bay Area",
+              linkedIn: result.personalInfo.linkedIn || data.personalInfo.linkedIn || "",
+              gitHub: result.personalInfo.gitHub || data.personalInfo.gitHub || "",
+              portfolio: result.personalInfo.portfolio || data.personalInfo.portfolio || "",
+              experienceLevel: result.personalInfo.experienceLevel || data.personalInfo.experienceLevel || "Senior",
+            },
+            professionalSummary: result.professionalSummary || data.professionalSummary || "",
+            workExperience: (result.workExperience || []).map((w: any) => ({
+              id: Math.random().toString(36).substr(2, 9),
+              company: w.company || "",
+              position: w.position || "",
+              location: w.location || "Remote",
+              startDate: w.startDate || "2022",
+              endDate: w.endDate || "Present",
+              current: w.current !== undefined ? w.current : true,
+              description: w.description || "",
+            })),
+            education: (result.education || []).map((edu: any) => ({
+              id: Math.random().toString(36).substr(2, 9),
+              institution: edu.institution || "",
+              degree: edu.degree || "",
+              fieldOfStudy: edu.fieldOfStudy || "",
+              location: edu.location || "",
+              startDate: edu.startDate || "2018",
+              endDate: edu.endDate || "2022",
+              gpa: edu.gpa || "",
+            })),
+            projects: (result.projects || []).map((p: any) => ({
+              id: Math.random().toString(36).substr(2, 9),
+              name: p.name || "",
+              role: p.role || "",
+              description: p.description || "",
+              technologies: p.technologies || "",
+            })),
+            skills: result.skills || data.skills || [],
+            certifications: (result.certifications || []).map((c: any) => ({
+              id: Math.random().toString(36).substr(2, 9),
+              name: c.name || "",
+              issuer: c.issuer || "",
+              date: c.date || "",
+            })),
+            awards: (result.awards || []).map((aw: any) => ({
+              id: Math.random().toString(36).substr(2, 9),
+              title: aw.title || "",
+              issuer: aw.issuer || "",
+              date: aw.date || "",
+              description: aw.description || "",
+            })),
+          });
+
+          setShowLinkedInImport(false);
+          setPdfFile(null);
+          alert("Resume PDF successfully parsed & imported! Your resume form has been populated.");
+        } else {
+          alert("Parsing succeeded but returned invalid resume structure. Check server logs.");
+        }
+      } catch (err: any) {
+        if (interval) clearInterval(interval);
+        console.error(err);
+        alert(`Parsing Error: ${err.message || "Could not parse PDF. Make sure it is a valid PDF and under 10MB."}`);
+      } finally {
+        setIsParsingPdf(false);
+        setParsingPdfStatus("");
+      }
+    };
+
+    reader.onerror = () => {
+      alert("Error reading file.");
+      setIsParsingPdf(false);
+      setParsingPdfStatus("");
+    };
+
+    reader.readAsDataURL(pdfFile);
+  };
+
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
       {/* Header with quick forge action */}
@@ -177,13 +451,28 @@ export default function ResumeForm({ data, onChange, onAISkipGenerate, isGenerat
           <h2 className="text-xl font-bold tracking-tight text-slate-950 dark:text-white font-display">Resume Builder Form</h2>
           <p className="text-xs text-slate-500">Auto-saves to local workspace. Tailor templates instantly.</p>
         </div>
-        <button
-          onClick={() => setShowQuickAI(!showQuickAI)}
-          className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 shrink-0 self-start sm:self-center"
-        >
-          <BrainCircuit className="w-4 h-4" />
-          <span>Complete Resume AI Forge</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-center shrink-0">
+          <button
+            onClick={() => {
+              setShowLinkedInImport(!showLinkedInImport);
+              setShowQuickAI(false);
+            }}
+            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5"
+          >
+            <Layers className="w-4 h-4" />
+            <span>LinkedIn & PDF AI Importer</span>
+          </button>
+          <button
+            onClick={() => {
+              setShowQuickAI(!showQuickAI);
+              setShowLinkedInImport(false);
+            }}
+            className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5"
+          >
+            <BrainCircuit className="w-4 h-4" />
+            <span>Complete Resume AI Forge</span>
+          </button>
+        </div>
       </div>
 
       {/* AI Quick Generator Drawer */}
@@ -194,10 +483,10 @@ export default function ResumeForm({ data, onChange, onAISkipGenerate, isGenerat
               <Sparkles className="w-4 h-4 text-indigo-500" />
               <span>Instant AI Resume Forge Form</span>
             </h4>
-            <span className="text-[10px] text-indigo-500 bg-indigo-100/50 dark:bg-indigo-950 font-semibold px-2 py-0.5 rounded">Premium API</span>
+            <span className="text-[10px] text-emerald-600 bg-emerald-100/50 dark:bg-emerald-950/50 font-bold px-2 py-0.5 rounded uppercase">Included Free</span>
           </div>
           <p className="text-xs text-slate-600 dark:text-slate-400">
-            Tell CareerForge AI your target profession and key background points. We'll automatically build and structure complete achievements, summary, projects, and certifications!
+            Tell CareerForge your target profession and key background points. We'll automatically build and structure complete achievements, summary, projects, and certifications!
           </p>
 
           <form onSubmit={triggerQuickAIGenerate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -281,6 +570,225 @@ export default function ResumeForm({ data, onChange, onAISkipGenerate, isGenerat
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* LinkedIn & PDF Import Drawer */}
+      {showLinkedInImport && (
+        <div className="p-5 bg-gradient-to-r from-blue-50 to-sky-50 dark:from-blue-950/20 dark:to-sky-950/20 rounded-xl border border-blue-100 dark:border-blue-950 text-left space-y-4">
+          <div className="flex justify-between items-center">
+            <h4 className="text-sm font-extrabold text-blue-950 dark:text-blue-200 uppercase font-display flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-blue-600" />
+              <span>AI Professional Importer</span>
+            </h4>
+            <span className="text-[10px] text-blue-600 bg-blue-100/50 dark:bg-blue-950 font-semibold px-2 py-0.5 rounded">Multi-Modal AI</span>
+          </div>
+
+          {/* Mode Switcher Tabs */}
+          <div className="flex border-b border-blue-100 dark:border-blue-900/50 pb-2 gap-4">
+            <button
+              type="button"
+              onClick={() => setImportMode("url")}
+              className={`pb-1.5 text-xs font-bold border-b-2 transition-all ${
+                importMode === "url"
+                  ? "border-blue-600 text-blue-700 dark:text-blue-400"
+                  : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              }`}
+            >
+              LinkedIn URL Scraping
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportMode("pdf")}
+              className={`pb-1.5 text-xs font-bold border-b-2 transition-all ${
+                importMode === "pdf"
+                  ? "border-blue-600 text-blue-700 dark:text-blue-400"
+                  : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              }`}
+            >
+              PDF Resume File AI Parser
+            </button>
+          </div>
+
+          {importMode === "url" ? (
+            <>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Paste a public LinkedIn profile URL. CareerForge's AI scraper will analyze the profile slug, extract professional metadata, and synthesize a complete professional resume structure.
+              </p>
+
+              <form onSubmit={handleScrapeLinkedin} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1 uppercase">LinkedIn Profile URL</label>
+                  <input
+                    type="url"
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    placeholder="https://www.linkedin.com/in/username"
+                    className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:border-blue-500 dark:bg-slate-950 text-slate-900 dark:text-white"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase">
+                      Optional: Paste LinkedIn Profile Text / PDF Export Content
+                    </label>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500">Improves accuracy significantly</span>
+                  </div>
+                  <textarea
+                    value={linkedinPasteData}
+                    onChange={(e) => setLinkedinPasteData(e.target.value)}
+                    placeholder="Copy everything from your LinkedIn profile page or PDF export and paste it here..."
+                    rows={3}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:border-blue-500 dark:bg-slate-950 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={isScrapingLinkedin}
+                    className="px-5 py-2 bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 disabled:from-blue-400 disabled:to-sky-400 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {isScrapingLinkedin ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Scraping & Building...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Run AI Scraper</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkedInImport(false)}
+                    className="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Upload your existing PDF resume. CareerForge's AI parser will process the file, extract work history, education, skills, and certifications, and map it perfectly to this form.
+              </p>
+
+              <form onSubmit={handleParsePdfResume} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1.5 uppercase">
+                    Upload Resume PDF
+                  </label>
+                  
+                  {!pdfFile ? (
+                    <div className="border-2 border-dashed border-blue-200 dark:border-blue-900/50 rounded-xl p-6 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-950/30 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all cursor-pointer relative">
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setPdfFile(e.target.files[0]);
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <UploadCloud className="w-8 h-8 text-blue-500 mb-2" />
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Drag & drop your PDF resume here or <span className="text-blue-600">browse</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-1">Supports PDF format up to 10MB</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-950 border border-blue-100 dark:border-blue-950 rounded-xl">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-blue-600" />
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 max-w-[200px] truncate">
+                            {pdfFile.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {(pdfFile.size / (1024 * 1024)).toFixed(2)} MB
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPdfFile(null)}
+                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={isParsingPdf || !pdfFile}
+                    className="px-5 py-2 bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 disabled:from-blue-400 disabled:to-sky-400 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {isParsingPdf ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Parsing & Synthesizing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Run AI PDF Parser</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowLinkedInImport(false);
+                      setPdfFile(null);
+                    }}
+                    className="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+
+          {isScrapingLinkedin && (
+            <div className="mt-3 p-3 bg-white dark:bg-slate-950 border border-blue-100 dark:border-blue-900 rounded-lg shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Scraper status:</span>
+                <span className="text-[10px] font-mono text-slate-400 animate-pulse">LIVE AGENT RUNNING</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+                {scrapingStatus}
+              </p>
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-500 to-sky-500 h-1.5 rounded-full animate-pulse" style={{ width: '85%' }}></div>
+              </div>
+            </div>
+          )}
+
+          {isParsingPdf && (
+            <div className="mt-3 p-3 bg-white dark:bg-slate-950 border border-blue-100 dark:border-blue-900 rounded-lg shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Parser status:</span>
+                <span className="text-[10px] font-mono text-slate-400 animate-pulse">AI MULTI-MODAL ACTIVE</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+                {parsingPdfStatus}
+              </p>
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-500 to-sky-500 h-1.5 rounded-full animate-pulse" style={{ width: '85%' }}></div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

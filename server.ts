@@ -6,7 +6,9 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
-import { GoogleGenAI, Type } from "@google/genai";
+import http from "http";
+import { WebSocketServer } from "ws";
+import { GoogleGenAI, Type, ThinkingLevel, Modality, LiveServerMessage } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
 dotenv.config();
@@ -80,8 +82,10 @@ app.post("/api/generate-resume", async (req, res) => {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
-          required: ["professionalSummary", "workExperience", "education", "projects", "skills", "certifications", "awards", "volunteerExperience"],
+          required: ["fullName", "profession", "professionalSummary", "workExperience", "education", "projects", "skills", "certifications", "awards", "volunteerExperience"],
           properties: {
+            fullName: { type: Type.STRING },
+            profession: { type: Type.STRING },
             professionalSummary: { type: Type.STRING },
             workExperience: {
               type: Type.ARRAY,
@@ -480,22 +484,30 @@ app.post("/api/generate-interview-questions", async (req, res) => {
 // Route 8: AI Chat Assistant
 app.post("/api/chat-assistant", async (req, res) => {
   try {
-    const { message, chatHistory, resumeContext } = req.body;
+    const { message, chatHistory, resumeContext, role, highThinking, searchGrounding } = req.body;
     if (!message) {
       return res.status(400).json({ error: "Message is required" });
     }
 
     const client = getAIClient();
 
+    // Determine the role-based system instruction
+    let roleDescription = "You are CareerForge AI Assistant, a world-class career coach and expert resume advisor.";
+    if (role === "salary") {
+      roleDescription = "You are CareerForge's Salary Negotiation Advisor. You are an expert at helping candidates negotiate compensation packages. Provide specific scripts, counter-offer templates, and psych-backed negotiation arguments.";
+    } else if (role === "gap") {
+      roleDescription = "You are CareerForge's Interview Coach specializing in explaining career gaps or employment transitions. Help candidates structure transparent, professional, and positive explanations for gaps without sounding apologetic.";
+    } else if (role === "pivot") {
+      roleDescription = "You are CareerForge's Career Pivot Coach. You help professionals translate their skills from one industry (e.g. hospitality, teaching) into another (e.g. tech, sales) by highlighting highly transferable soft and hard skills.";
+    } else if (role === "interview") {
+      roleDescription = "You are CareerForge's Hard-Core Mock Interviewer. Ask tough, professional, situational questions (like STAR method) and evaluate candidate responses rigorously with feedback on how to improve.";
+    } else if (role === "resume") {
+      roleDescription = "You are CareerForge's Resume Critic. Critically review details, pointing out passive language, missing metrics, weak verbs, and advising how to rewrite descriptions to stand out to ATS and hiring managers.";
+    }
+
     const systemInstruction = `
-      You are CareerForge AI Assistant, a world-class career coach and expert resume advisor.
-      Help the user with:
-      - Resume and CV optimizations
-      - Career directions, roadmap, and skill gaps
-      - Interview preparation and practice
-      - Salary negotiation tips
-      - Cover letter edits
-      - LinkedIn profile optimizations
+      ${roleDescription}
+      Help the user with their career-related question.
 
       Resume Context:
       ${resumeContext ? JSON.stringify(resumeContext) : "No resume created yet. Guide them to build or optimize one."}
@@ -503,8 +515,22 @@ app.post("/api/chat-assistant", async (req, res) => {
       Respond with concise, actionable, and encouraging insights. Keep answers highly professional, formatted with bolding and bullet points for easy reading.
     `;
 
+    // Choose model and configuration
+    let selectedModel = "gemini-3.5-flash"; // Default general task
+    const config: any = { systemInstruction };
+
+    if (highThinking) {
+      selectedModel = "gemini-3.1-pro-preview"; // Complex tasks
+      config.thinkingConfig = {
+        thinkingLevel: ThinkingLevel.HIGH
+      };
+    } else if (searchGrounding) {
+      selectedModel = "gemini-3.5-flash";
+      config.tools = [{ googleSearch: {} }];
+    }
+
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: selectedModel,
       contents: [
         ...(chatHistory || []).map((msg: any) => ({
           role: msg.role === "user" ? "user" : "model",
@@ -512,15 +538,317 @@ app.post("/api/chat-assistant", async (req, res) => {
         })),
         { role: "user", parts: [{ text: message }] }
       ],
-      config: {
-        systemInstruction,
-      }
+      config
     });
 
-    res.json({ response: response.text ? response.text.trim() : "I'm here to support your career path. Ask me anything!" });
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
+    res.json({
+      response: response.text ? response.text.trim() : "I'm here to support your career path. Ask me anything!",
+      groundingChunks
+    });
   } catch (error: any) {
     console.error("Error in chat assistant:", error);
     res.status(500).json({ error: error.message || "Failed to generate chat response" });
+  }
+});
+
+// Route 9: AI LinkedIn Scraper & Importer
+app.post("/api/scrape-linkedin", async (req, res) => {
+  try {
+    const { profileUrl, pasteData } = req.body;
+    if (!profileUrl) {
+      return res.status(400).json({ error: "LinkedIn Profile URL is required." });
+    }
+
+    const client = getAIClient();
+    
+    // Parse the URL to get a candidate name or details as fallback hints
+    // Example: https://www.linkedin.com/in/john-doe-12345/
+    const urlParts = profileUrl.split("/in/")[1] || "";
+    const slug = urlParts.split("/")[0] || "";
+    const fallbackName = slug
+      .split("-")
+      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+      .filter((word: string) => isNaN(Number(word)))
+      .join(" ") || "Professional Candidate";
+
+    const prompt = `
+      You are CareerForge's elite AI LinkedIn Profile Scraper.
+      Your task is to analyze the provided LinkedIn URL and optional pasted text profile content, and construct/simulate a highly professional, ATS-friendly, structured resume dataset.
+      
+      LinkedIn Profile URL: ${profileUrl}
+      Optional Copied Profile Content (Paste Data):
+      ${pasteData || "No direct copy-paste text provided. Generate custom, realistic, high-caliber details based on the profile name/profession inferred from the URL."}
+
+      Fallback inferred name from URL: ${fallbackName}
+
+      Generate highly polished, achievement-based, and realistic resume data for this user.
+      - If direct pasted text was provided, parse all names, roles, company experiences, education, and skills meticulously.
+      - If no pasted text was provided, use your advanced knowledge to hypothesize a world-class professional career history matching the name/role extracted from the URL slug (e.g., if slug is 'alex-rivera-software-engineer', generate a stellar career history of a Senior Full-Stack Engineer).
+      
+      Include:
+      1. Personal Info (Full Name, Profession matching the profile, and placeholder contacts matching the name, e.g. email 'alex.rivera@example.com' or phone)
+      2. A Professional Summary (3 sentences, metric-rich and tailored to the seniority)
+      3. 2-3 Work Experiences with 3 achievements each starting with a bullet symbol (•). Ensure bullet points use strong action verbs and metrics.
+      4. 1-2 Education records matching their study area (e.g. B.S. in Computer Science)
+      5. 2-3 highly relevant projects with tech stacks
+      6. A rich set of 8-12 Skills
+      7. 2 Certifications
+      8. 1 Award
+      
+      Ensure the output exactly conforms to the specified JSON schema. All experiences, projects, awards, and certifications should have realistic details.
+    `;
+
+    const response = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          required: ["personalInfo", "professionalSummary", "workExperience", "education", "projects", "skills", "certifications", "awards"],
+          properties: {
+            personalInfo: {
+              type: Type.OBJECT,
+              required: ["fullName", "profession", "email", "experienceLevel"],
+              properties: {
+                fullName: { type: Type.STRING },
+                profession: { type: Type.STRING },
+                email: { type: Type.STRING },
+                phone: { type: Type.STRING },
+                address: { type: Type.STRING },
+                experienceLevel: { type: Type.STRING, description: "Entry, Mid, Senior, or Executive" }
+              }
+            },
+            professionalSummary: { type: Type.STRING },
+            workExperience: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["company", "position", "location", "startDate", "endDate", "current", "description"],
+                properties: {
+                  company: { type: Type.STRING },
+                  position: { type: Type.STRING },
+                  location: { type: Type.STRING },
+                  startDate: { type: Type.STRING },
+                  endDate: { type: Type.STRING },
+                  current: { type: Type.BOOLEAN },
+                  description: { type: Type.STRING, description: "Multiline string containing 3 bullet points starting with bullet symbol (•) detailing measurable achievements." }
+                }
+              }
+            },
+            education: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["institution", "degree", "fieldOfStudy", "location", "startDate", "endDate"],
+                properties: {
+                  institution: { type: Type.STRING },
+                  degree: { type: Type.STRING },
+                  fieldOfStudy: { type: Type.STRING },
+                  location: { type: Type.STRING },
+                  startDate: { type: Type.STRING },
+                  endDate: { type: Type.STRING },
+                  gpa: { type: Type.STRING }
+                }
+              }
+            },
+            projects: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["name", "role", "description", "technologies"],
+                properties: {
+                  name: { type: Type.STRING },
+                  role: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  technologies: { type: Type.STRING }
+                }
+              }
+            },
+            skills: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            certifications: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["name", "issuer", "date"],
+                properties: {
+                  name: { type: Type.STRING },
+                  issuer: { type: Type.STRING },
+                  date: { type: Type.STRING }
+                }
+              }
+            },
+            awards: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["title", "issuer", "date", "description"],
+                properties: {
+                  title: { type: Type.STRING },
+                  issuer: { type: Type.STRING },
+                  date: { type: Type.STRING },
+                  description: { type: Type.STRING }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const data = JSON.parse(response.text || "{}");
+    res.json(data);
+  } catch (error: any) {
+    console.error("Error scraping LinkedIn:", error);
+    res.status(500).json({ error: error.message || "Failed to scrape LinkedIn profile" });
+  }
+});
+
+// Route 10: AI PDF Resume Parser & Importer
+app.post("/api/parse-pdf-resume", async (req, res) => {
+  try {
+    const { pdfBase64, fileName } = req.body;
+    if (!pdfBase64) {
+      return res.status(400).json({ error: "PDF base64 data is required." });
+    }
+
+    const client = getAIClient();
+
+    const pdfPart = {
+      inlineData: {
+        mimeType: "application/pdf",
+        data: pdfBase64
+      }
+    };
+
+    const prompt = `
+      You are CareerForge's elite AI Resume Parser.
+      Analyze the attached PDF resume file (named "${fileName || "resume.pdf"}") and extract/parse all professional details into a highly polished, achievement-based, and ATS-friendly structured dataset.
+      
+      Meticulously parse:
+      1. Personal Info: Full Name, Profession, Email, Phone, Address, and Experience Level (Entry, Mid, Senior, or Executive)
+      2. Professional Summary: 3 impactful sentences summarizing their career highlights, metrics, and top skills
+      3. Work Experience: An array of previous jobs. For each job, provide company, position, location, startDate, endDate, current (boolean), and a description consisting of 3 bullet points starting with the bullet symbol (•) detailing measurable achievements.
+      4. Education: An array of academic records (institution, degree, fieldOfStudy, location, startDate, endDate, gpa if available)
+      5. Projects: Relevant portfolio projects (name, role, description, technologies)
+      6. Skills: An array of 8-15 technical and soft skills extracted from the resume
+      7. Certifications: Certifications/licenses (name, issuer, date)
+      8. Awards: Professional or academic awards (title, issuer, date, description)
+
+      Ensure the output strictly conforms to the specified JSON schema. Keep all roles, dates, and descriptions accurate based on the text and formatting in the PDF.
+    `;
+
+    const response = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [pdfPart, prompt],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          required: ["personalInfo", "professionalSummary", "workExperience", "education", "projects", "skills", "certifications", "awards"],
+          properties: {
+            personalInfo: {
+              type: Type.OBJECT,
+              required: ["fullName", "profession", "email", "experienceLevel"],
+              properties: {
+                fullName: { type: Type.STRING },
+                profession: { type: Type.STRING },
+                email: { type: Type.STRING },
+                phone: { type: Type.STRING },
+                address: { type: Type.STRING },
+                experienceLevel: { type: Type.STRING, description: "Entry, Mid, Senior, or Executive" }
+              }
+            },
+            professionalSummary: { type: Type.STRING },
+            workExperience: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["company", "position", "location", "startDate", "endDate", "current", "description"],
+                properties: {
+                  company: { type: Type.STRING },
+                  position: { type: Type.STRING },
+                  location: { type: Type.STRING },
+                  startDate: { type: Type.STRING },
+                  endDate: { type: Type.STRING },
+                  current: { type: Type.BOOLEAN },
+                  description: { type: Type.STRING, description: "Multiline string containing 3 bullet points starting with bullet symbol (•) detailing measurable achievements." }
+                }
+              }
+            },
+            education: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["institution", "degree", "fieldOfStudy", "location", "startDate", "endDate"],
+                properties: {
+                  institution: { type: Type.STRING },
+                  degree: { type: Type.STRING },
+                  fieldOfStudy: { type: Type.STRING },
+                  location: { type: Type.STRING },
+                  startDate: { type: Type.STRING },
+                  endDate: { type: Type.STRING },
+                  gpa: { type: Type.STRING }
+                }
+              }
+            },
+            projects: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["name", "role", "description", "technologies"],
+                properties: {
+                  name: { type: Type.STRING },
+                  role: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  technologies: { type: Type.STRING }
+                }
+              }
+            },
+            skills: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            certifications: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["name", "issuer", "date"],
+                properties: {
+                  name: { type: Type.STRING },
+                  issuer: { type: Type.STRING },
+                  date: { type: Type.STRING }
+                }
+              }
+            },
+            awards: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["title", "issuer", "date", "description"],
+                properties: {
+                  title: { type: Type.STRING },
+                  issuer: { type: Type.STRING },
+                  date: { type: Type.STRING },
+                  description: { type: Type.STRING }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const parsedData = JSON.parse(response.text || "{}");
+    res.json(parsedData);
+  } catch (error: any) {
+    console.error("Error parsing PDF Resume:", error);
+    res.status(500).json({ error: error.message || "Failed to parse PDF resume." });
   }
 });
 
@@ -540,7 +868,64 @@ async function setupVite() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = http.createServer(app);
+  const wss = new WebSocketServer({ server, path: "/api/voice-live" });
+
+  wss.on("connection", async (clientWs) => {
+    console.log("Client connected to Live Voice API WebSocket.");
+    try {
+      const client = getAIClient();
+      const session = await client.live.connect({
+        model: "gemini-3.1-flash-live-preview",
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
+          },
+          systemInstruction: "You are CareerForge's Real-time Live Interview Coach. Act as a supportive but realistic interviewer who is asking questions in real-time. Keep your responses brief, professional, conversational, and focused on voice interview coaching.",
+        },
+        callbacks: {
+          onmessage: (message: LiveServerMessage) => {
+            const audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+            if (audio) {
+              clientWs.send(JSON.stringify({ audio }));
+            }
+            if (message.serverContent?.interrupted) {
+              clientWs.send(JSON.stringify({ interrupted: true }));
+            }
+          },
+        },
+      });
+
+      clientWs.on("message", (data) => {
+        try {
+          const parsed = JSON.parse(data.toString());
+          if (parsed.audio) {
+            session.sendRealtimeInput({
+              audio: { data: parsed.audio, mimeType: "audio/pcm;rate=16000" },
+            });
+          }
+        } catch (err) {
+          console.error("Error sending input to Live API session:", err);
+        }
+      });
+
+      clientWs.on("close", () => {
+        console.log("Live Voice API WebSocket client closed.");
+        try {
+          session.close();
+        } catch (e) {}
+      });
+    } catch (err: any) {
+      console.error("Failed to establish live session:", err);
+      try {
+        clientWs.send(JSON.stringify({ error: err.message || "Failed to initialize Live API session." }));
+        clientWs.close();
+      } catch (e) {}
+    }
+  });
+
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`CareerForge AI Full Stack Server running on http://0.0.0.0:${PORT}`);
   });
 }

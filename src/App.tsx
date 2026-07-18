@@ -4,6 +4,8 @@
  */
 
 import { useState, useEffect } from "react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import LandingPage from "./components/LandingPage";
 import ResumeForm from "./components/ResumeForm";
 import ResumeTemplates from "./components/ResumeTemplates";
@@ -12,6 +14,7 @@ import CoverLetterGenerator from "./components/CoverLetterGenerator";
 import JobTracker from "./components/JobTracker";
 import InterviewPrep from "./components/InterviewPrep";
 import AIChat from "./components/AIChat";
+import LegalModal, { LegalTab } from "./components/LegalModal";
 import { ResumeData, CoverLetterData, JobApplication } from "./types";
 import {
   FileText,
@@ -172,6 +175,14 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [previewView, setPreviewView] = useState<"desktop" | "tablet" | "print">("desktop");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [legalModalOpen, setLegalModalOpen] = useState(false);
+  const [selectedLegalTab, setSelectedLegalTab] = useState<LegalTab>("privacy");
+
+  const openLegalModal = (tab: LegalTab) => {
+    setSelectedLegalTab(tab);
+    setLegalModalOpen(true);
+  };
 
   // Load from LocalStorage
   useEffect(() => {
@@ -299,6 +310,69 @@ ${s.skills.join(", ")}`;
     }, 250);
   };
 
+  // Export CV directly as high-fidelity PDF using jsPDF + html2canvas
+  const handleExportPDF = async () => {
+    const element = document.getElementById("cv-template-preview");
+    if (!element) {
+      alert("Resume preview element not found.");
+      return;
+    }
+
+    setIsExportingPDF(true);
+    try {
+      // Temporarily switch previewView to desktop mode to capture the exact layout structure cleanly
+      const currentViewMode = previewView;
+      setPreviewView("desktop");
+
+      // Give React 300ms to re-render in full high-fidelity layout
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const opt = {
+        scale: 2.5, // Crisp high-definition text rendering (not pixelated)
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: "#ffffff"
+      };
+
+      const canvas = await html2canvas(element, opt);
+      const imgData = canvas.toDataURL("image/jpeg", 0.98);
+
+      // Standard A4 dimensions in mm (210mm x 297mm)
+      const imgWidth = 210;
+      const pageHeight = 297;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      let position = 0;
+
+      // Add first page
+      pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Handle multi-page documents if any overflow occurs
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const rawName = resumeData.personalInfo.fullName || "Resume";
+      const sanitizedName = rawName.trim().replace(/\s+/g, "_");
+      pdf.save(`${sanitizedName}_CareerForge_CV.pdf`);
+
+      // Restore original view mode
+      setPreviewView(currentViewMode);
+    } catch (err) {
+      console.error("Failed to generate PDF via jsPDF:", err);
+      alert("Direct PDF export failed. As an alternative, you can use the 'Print/Print PDF' button to print or save via your browser.");
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
   if (currentView === "landing") {
     return <LandingPage onEnterApp={() => setCurrentView("dashboard")} />;
   }
@@ -312,7 +386,7 @@ ${s.skills.join(", ")}`;
             <Sparkles className="w-5.5 h-5.5" />
           </div>
           <div>
-            <h1 className="text-base font-black tracking-tight text-slate-950 dark:text-white font-display">CareerForge AI</h1>
+            <h1 className="text-base font-black tracking-tight text-slate-950 dark:text-white font-display">CareerForge</h1>
             <p className="text-[10px] text-indigo-500 font-bold font-mono uppercase tracking-widest mt-0.5">SaaS Builder Suite</p>
           </div>
         </div>
@@ -330,9 +404,10 @@ ${s.skills.join(", ")}`;
           <button
             onClick={() => setCurrentView("landing")}
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all"
+            title="Return to home page"
           >
             <Home className="w-4 h-4" />
-            <span className="hidden sm:inline">Landing Page</span>
+            <span className="hidden sm:inline">Home</span>
           </button>
         </div>
       </header>
@@ -468,11 +543,25 @@ ${s.skills.join(", ")}`;
                   </div>
 
                   <button
-                    onClick={handlePrint}
-                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow flex items-center gap-1"
+                    onClick={handleExportPDF}
+                    disabled={isExportingPDF}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-700/60 text-white rounded-lg text-xs font-bold transition-all shadow flex items-center gap-1.5 disabled:opacity-80 cursor-pointer disabled:cursor-not-allowed"
                   >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Print CV PDF</span>
+                    {isExportingPDF ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5 text-white" />
+                    )}
+                    <span>{isExportingPDF ? "Exporting PDF..." : "Download PDF"}</span>
+                  </button>
+
+                  <button
+                    onClick={handlePrint}
+                    className="px-3 py-1.5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-950 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
+                    title="Open print panel for browser print-to-PDF"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Print/Print PDF</span>
                   </button>
                 </div>
               </div>
@@ -518,21 +607,36 @@ ${s.skills.join(", ")}`;
 
         {/* TAB 6: CAREER ADVISOR CHAT */}
         {activeTab === "copilot" && (
-          <AIChat />
+          <AIChat resumeText={getResumeAsText()} />
         )}
 
       </main>
 
       {/* Workspace Footer */}
-      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-4 px-6 text-center text-xs text-slate-400 dark:text-slate-500 shrink-0 mt-8 print:hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between max-w-7xl mx-auto gap-2">
-          <p>© 2026 CareerForge AI Suite. All resume inputs securely persisted offline in sandboxed localStorage.</p>
+      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-6 px-6 text-xs text-slate-400 dark:text-slate-500 shrink-0 mt-8 print:hidden">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between max-w-7xl mx-auto gap-4">
+          <div className="space-y-1 text-center md:text-left">
+            <p>© 2026 CareerForge Suite. All resume inputs securely persisted offline in sandboxed localStorage.</p>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-4 gap-y-1 text-slate-400 dark:text-slate-500 font-medium">
+              <button onClick={() => openLegalModal("privacy")} className="hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors bg-transparent border-0 p-0 text-xs font-normal">Privacy Policy</button>
+              <span className="text-slate-300 dark:text-slate-800 hidden sm:inline">•</span>
+              <button onClick={() => openLegalModal("terms")} className="hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors bg-transparent border-0 p-0 text-xs font-normal">Terms of Service</button>
+              <span className="text-slate-300 dark:text-slate-800 hidden sm:inline">•</span>
+              <button onClick={() => openLegalModal("support")} className="hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors bg-transparent border-0 p-0 text-xs font-semibold text-slate-500 dark:text-slate-400">Contact Support</button>
+            </div>
+          </div>
           <div className="flex items-center justify-center gap-1 text-emerald-500 font-mono font-bold text-[10px]">
             <FolderLock className="w-3.5 h-3.5" />
             <span>SANDBOX STORAGE ENABLED</span>
           </div>
         </div>
       </footer>
+
+      <LegalModal 
+        isOpen={legalModalOpen} 
+        onClose={() => setLegalModalOpen(false)} 
+        initialTab={selectedLegalTab} 
+      />
     </div>
   );
 }

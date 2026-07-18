@@ -3,14 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { useState } from "react";
 import { motion } from "motion/react";
 import { Sparkles, FileText, FileCheck, CheckCircle, ArrowRight, Star, Cpu, Briefcase, Award, GraduationCap } from "lucide-react";
+import LegalModal, { LegalTab } from "./LegalModal";
 
 interface LandingPageProps {
   onEnterApp: () => void;
 }
 
 export default function LandingPage({ onEnterApp }: LandingPageProps) {
+  const [legalModalOpen, setLegalModalOpen] = useState(false);
+  const [selectedLegalTab, setSelectedLegalTab] = useState<LegalTab>("privacy");
+
+  const openLegalModal = (tab: LegalTab) => {
+    setSelectedLegalTab(tab);
+    setLegalModalOpen(true);
+  };
+
   const stats = [
     { value: "450K+", label: "Resumes Built" },
     { value: "98.2%", label: "ATS Pass Rate" },
@@ -24,7 +34,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
       role: "Senior Product Designer",
       company: "Stripe",
       image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120",
-      quote: "CareerForge AI completely transformed my resume. The ATS scorer found keywords I hadn't even thought about. Within 2 weeks of updating, I landed interviews with Stripe and Figma!",
+      quote: "CareerForge completely transformed my resume. The ATS scorer found keywords I hadn't even thought about. Within 2 weeks of updating, I landed interviews with Stripe and Figma!",
     },
     {
       name: "David Chen",
@@ -37,8 +47,8 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
 
   const faqs = [
     {
-      question: "What makes CareerForge AI different from standard resume builders?",
-      answer: "Unlike traditional builders that just offer templates, CareerForge AI uses advanced intelligence (powered by Gemini) to analyze your experiences, generate quantifiable, achievement-driven bullet points, suggest keywords, and calculate a live ATS compatibility score to ensure you bypass recruiter filters.",
+      question: "What makes CareerForge different from standard resume builders?",
+      answer: "Unlike traditional builders that just offer templates, CareerForge uses advanced intelligence (powered by Gemini) to analyze your experiences, generate quantifiable, achievement-driven bullet points, suggest keywords, and calculate a live ATS compatibility score to ensure you bypass recruiter filters.",
     },
     {
       question: "Is the resume output fully ATS-compliant?",
@@ -46,7 +56,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
     },
     {
       question: "Can I try it for free?",
-      answer: "Yes! The free plan gives you access to 2 full resumes, 2 cover letters, and all standard templates. Upgrading to Premium unlocks unlimited documents, the live ATS check, advanced interview preparation simulator, and priority AI refinement tools.",
+      answer: "Yes! CareerForge is 100% free with unlimited access. Create as many resumes, CVs, and cover letters as you need, run unlimited live ATS checks, use the AI Rewrite assistant, track your jobs in the kanban board, and practice with the real-time AI live voice simulator without any subscriptions or fees.",
     },
   ];
 
@@ -65,7 +75,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <span className="font-display text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-indigo-300 bg-clip-text text-transparent">
-              CareerForge AI
+              CareerForge
             </span>
           </div>
           <div className="flex items-center space-x-6">
@@ -303,10 +313,10 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="max-w-2xl mx-auto mb-16">
             <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white mb-4">
-              Simple, Transparent Pricing
+              100% Free & Unlimited Access
             </h2>
             <p className="text-slate-400 text-sm">
-              Launch your career upgrade today. Get started for free, then choose premium whenever you need advanced features.
+              Launch your career upgrade today. Everything is fully unlocked and ready to use. No credit cards, no subscriptions, and no locked features.
             </p>
           </div>
 
@@ -314,17 +324,17 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
             {/* Free tier */}
             <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-between">
               <div>
-                <h3 className="text-lg font-bold text-slate-300 mb-1">Standard Starter</h3>
-                <p className="text-xs text-slate-500 mb-6">Perfect for trying things out</p>
+                <h3 className="text-lg font-bold text-slate-300 mb-1">Standard Tools</h3>
+                <p className="text-xs text-slate-500 mb-6">Perfect for quick, professional resumes</p>
                 <div className="text-3xl font-bold text-white mb-8">$0 <span className="text-sm text-slate-500 font-normal">/ forever</span></div>
                 <ul className="space-y-3 mb-8">
                   <li className="flex items-center space-x-2.5 text-xs text-slate-400">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Create up to 2 distinct Resumes</span>
+                    <span>Create unlimited distinct Resumes</span>
                   </li>
                   <li className="flex items-center space-x-2.5 text-xs text-slate-400">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Create up to 2 Cover Letters</span>
+                    <span>Create unlimited Cover Letters</span>
                   </li>
                   <li className="flex items-center space-x-2.5 text-xs text-slate-400">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -338,21 +348,21 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
               </div>
               <button
                 onClick={onEnterApp}
-                className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm transition-colors"
+                className="w-full py-3 rounded-xl bg-slate-800 hover:bg-indigo-600 text-white font-semibold text-sm transition-colors"
               >
-                Sign Up Free
+                Access Free Tools
               </button>
             </div>
 
             {/* Premium Tier */}
             <div className="p-8 bg-gradient-to-b from-indigo-950 to-slate-900 border border-indigo-500/30 rounded-2xl flex flex-col justify-between relative shadow-2xl">
-              <div className="absolute top-0 right-6 -translate-y-1/2 px-3 py-1 bg-indigo-600 rounded-full text-[10px] font-bold tracking-wide uppercase text-white">
-                Best Value
+              <div className="absolute top-0 right-6 -translate-y-1/2 px-3 py-1 bg-emerald-600 rounded-full text-[10px] font-bold tracking-wide uppercase text-white animate-pulse">
+                Fully Unlocked
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white mb-1">Career Forge Pro</h3>
-                <p className="text-xs text-indigo-400 mb-6">Unlock infinite job-seeking features</p>
-                <div className="text-3xl font-bold text-white mb-8">$19 <span className="text-sm text-slate-400 font-normal">/ month</span></div>
+                <h3 className="text-lg font-bold text-white mb-1">AI Pro Suite</h3>
+                <p className="text-xs text-indigo-300 mb-6 font-medium">Uncapped access to our smartest features</p>
+                <div className="text-3xl font-bold text-white mb-8">$0 <span className="text-sm text-slate-450 font-normal">/ forever</span></div>
                 <ul className="space-y-3 mb-8">
                   <li className="flex items-center space-x-2.5 text-xs text-slate-300 font-medium">
                     <CheckCircle className="w-4 h-4 text-indigo-400 shrink-0" />
@@ -368,7 +378,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
                   </li>
                   <li className="flex items-center space-x-2.5 text-xs text-slate-300">
                     <CheckCircle className="w-4 h-4 text-indigo-400 shrink-0" />
-                    <span>Interactive Interview prep simulator</span>
+                    <span>Interactive Interview prep & live voice simulator</span>
                   </li>
                   <li className="flex items-center space-x-2.5 text-xs text-slate-300">
                     <CheckCircle className="w-4 h-4 text-indigo-400 shrink-0" />
@@ -380,7 +390,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
                 onClick={onEnterApp}
                 className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-600/30"
               >
-                Unlock Pro Access
+                Access AI Pro Suite (Free)
               </button>
             </div>
           </div>
@@ -409,16 +419,22 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center space-x-2">
             <Sparkles className="w-4 h-4 text-indigo-500" />
-            <span className="font-bold text-slate-300">CareerForge AI</span>
+            <span className="font-bold text-slate-300">CareerForge</span>
           </div>
-          <p>© 2026 CareerForge AI. All rights reserved. Built with Gemini AI.</p>
+          <p>© 2026 CareerForge. All rights reserved. Deguyguy</p>
           <div className="flex space-x-6">
-            <a href="#" className="hover:text-slate-300">Privacy Policy</a>
-            <a href="#" className="hover:text-slate-300">Terms of Service</a>
-            <a href="#" className="hover:text-slate-300">Contact Support</a>
+            <button onClick={() => openLegalModal("privacy")} className="hover:text-slate-300 cursor-pointer transition-colors bg-transparent border-0 p-0 text-slate-500 font-normal">Privacy Policy</button>
+            <button onClick={() => openLegalModal("terms")} className="hover:text-slate-300 cursor-pointer transition-colors bg-transparent border-0 p-0 text-slate-500 font-normal">Terms of Service</button>
+            <button onClick={() => openLegalModal("support")} className="hover:text-slate-300 cursor-pointer transition-colors bg-transparent border-0 p-0 text-slate-500 font-normal">Contact Support</button>
           </div>
         </div>
       </footer>
+
+      <LegalModal 
+        isOpen={legalModalOpen} 
+        onClose={() => setLegalModalOpen(false)} 
+        initialTab={selectedLegalTab} 
+      />
     </div>
   );
 }
