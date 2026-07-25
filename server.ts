@@ -19,31 +19,34 @@ const PORT = 3000;
 app.use(express.json({ limit: "10mb" }));
 
 // Initialize Gemini Client
-const geminiApiKey = process.env.GEMINI_API_KEY || "";
 let ai: GoogleGenAI | null = null;
 
-if (geminiApiKey) {
-  ai = new GoogleGenAI({
-    apiKey: geminiApiKey,
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
-    },
-  });
-} else {
-  console.warn("WARNING: GEMINI_API_KEY is not defined in the environment. AI features will be unavailable.");
-}
-
-// Reusable Helper to make sure AI is available
-function getAIClient() {
+function getAIClient(): GoogleGenAI {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("GEMINI_API_KEY environment variable is missing. Please configure GEMINI_API_KEY in Settings > Secrets.");
+  }
   if (!ai) {
-    throw new Error("Gemini AI API Key is missing. Please add GEMINI_API_KEY in Settings > Secrets.");
+    ai = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
   }
   return ai;
 }
 
 // API Routes
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+  });
+});
 
 // Route 1: AI Resume Generator (Generate from small form)
 app.post("/api/generate-resume", async (req, res) => {
